@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>俄乌战争战线图 · Ukraine Frontline Map</title>
+
+<!-- Leaflet -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<!-- Turf.js for area calculation -->
+<script src="https://unpkg.com/@turf/turf@7/turf.min.js"></script>
+
+<style>
+/* ===== Reset & Base ===== */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { height: 100%; overflow: hidden; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: #0d0d1a;
+  color: #e0e0e0;
+}
+
+/* ===== Map ===== */
+#map {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  z-index: 0;
+}
+
+/* ===== Top Controls ===== */
+.control-panel {
+  position: fixed;
+  top: 16px; left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  background: rgba(13, 13, 26, 0.88);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 10px 18px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  user-select: none;
+}
+.control-panel .logo {
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+.control-panel .logo span { color: #e8553a; }
+.control-panel .divider {
+  width: 1px; height: 24px;
+  background: rgba(255,255,255,0.12);
+}
+.control-panel label {
+  font-size: 13px;
+  color: rgba(255,255,255,0.6);
+  white-space: nowrap;
+}
+.control-panel input[type="date"] {
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 8px;
+  padding: 6px 10px;
+  color: #fff;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.2s;
+  min-width: 140px;
+}
+.control-panel input[type="date"]:focus {
+  border-color: #e8553a;
+}
+.control-panel input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.8);
+  cursor: pointer;
+}
+.control-panel input[type="date"]:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ===== Today button ===== */
+.btn-today {
+  background: rgba(232, 85, 58, 0.15);
+  border: 1px solid rgba(232, 85, 58, 0.3);
+  border-radius: 8px;
+  padding: 6px 12px;
+  color: #e8553a;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s;
+}
+.btn-today:hover {
+  background: rgba(232, 85, 58, 0.25);
+}
+.btn-today:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ===== Bottom Info ===== */
+.info-bar {
+  position: fixed;
+  bottom: 20px; left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  background: rgba(13, 13, 26, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 10px 20px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+  user-select: none;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.info-item {
+  text-align: center;
+}
+.info-item .label {
+  font-size: 11px;
+  color: rgba(255,255,255,0.45);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 2px;
+}
+.info-item .value {
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+}
+.info-item .value.russian { color: #e8553a; }
+.info-item .value.ukraine { color: #4a9eff; }
+.info-item .divider-dot {
+  width: 4px; height: 4px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.2);
+}
+
+/* ===== Loading Spinner ===== */
+.loading-overlay {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  z-index: 999;
+  background: rgba(13, 13, 26, 0.5);
+  backdrop-filter: blur(2px);
+  align-items: center;
+  justify-content: center;
+}
+.loading-overlay.active { display: flex; }
+.spinner {
+  width: 40px; height: 40px;
+  border: 3px solid rgba(255,255,255,0.1);
+  border-top-color: #e8553a;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ===== Error Toast ===== */
+.error-toast {
+  display: none;
+  position: fixed;
+  top: 80px; left: 50%;
+  transform: translateX(-50%);
+  z-index: 1001;
+  background: rgba(220, 50, 50, 0.92);
+  backdrop-filter: blur(8px);
+  border-radius: 10px;
+  padding: 10px 20px;
+  font-size: 13px;
+  color: #fff;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+  text-align: center;
+  max-width: 90vw;
+  animation: fadeIn 0.3s ease;
+}
+.error-toast.active { display: block; }
+@keyframes fadeIn { from { opacity: 0; transform: translateX(-50%) translateY(-8px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+
+/* ===== Leaflet Overrides ===== */
+.leaflet-control-zoom a {
+  background: rgba(13, 13, 26, 0.85) !important;
+  color: #e0e0e0 !important;
+  border-color: rgba(255,255,255,0.1) !important;
+}
+.leaflet-control-zoom a:hover {
+  background: rgba(30, 30, 50, 0.9) !important;
+}
+.leaflet-control-attribution {
+  background: rgba(13,13,26,0.5) !important;
+  color: rgba(255,255,255,0.3) !important;
+  font-size: 10px !important;
+  padding: 2px 6px !important;
+}
+.leaflet-control-attribution a {
+  color: rgba(255,255,255,0.4) !important;
+}
+
+/* ===== Mobile Responsive ===== */
+@media (max-width: 640px) {
+  .control-panel {
+    top: 10px;
+    padding: 8px 12px;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: center;
+    width: calc(100% - 20px);
+    border-radius: 10px;
+  }
+  .control-panel .logo { font-size: 13px; }
+  .control-panel .divider { display: none; }
+  .control-panel label { font-size: 12px; }
+  .control-panel input[type="date"] {
+    font-size: 12px;
+    padding: 5px 8px;
+    min-width: 120px;
+    flex: 1;
+  }
+  .info-bar {
+    bottom: 12px;
+    padding: 8px 14px;
+    gap: 12px;
+    width: calc(100% - 20px);
+    border-radius: 10px;
+  }
+  .info-item .value { font-size: 14px; }
+  .info-item .label { font-size: 10px; }
+}
+
+/* ===== Share hint ===== */
+.share-hint {
+  position: fixed;
+  bottom: 80px; left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  font-size: 11px;
+  color: rgba(255,255,255,0.25);
+  text-align: center;
+  pointer-events: none;
+}
+@media (max-width: 640px) {
+  .share-hint { bottom: 72px; font-size: 10px; }
+}
+</style>
+</head>
+<body>
+
+<!-- Map Container -->
+<div id="map"></div>
+
+<!-- Loading Overlay -->
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="spinner"></div>
+</div>
+
+<!-- Error Toast -->
+<div class="error-toast" id="errorToast"></div>
+
+<!-- Top Control Panel -->
+<div class="control-panel" id="controlPanel">
+  <div class="logo"><span>◉</span> 战线图</div>
+  <div class="divider"></div>
+  <label for="datePicker">📅</label>
+  <input type="date" id="datePicker" />
+  <button class="btn-today" id="btnToday">今日</button>
+</div>
+
+<!-- Bottom Info Bar -->
+<div class="info-bar" id="infoBar">
+  <div class="info-item">
+    <div class="label">日期</div>
+    <div class="value" id="displayDate">—</div>
+  </div>
+  <div class="divider-dot"></div>
+  <div class="info-item">
+    <div class="label">俄控面积</div>
+    <div class="value russian" id="russianArea">—</div>
+  </div>
+  <div class="divider-dot"></div>
+  <div class="info-item">
+    <div class="label">占比</div>
+    <div class="value" id="occPercent">—</div>
+  </div>
+</div>
+
+<div class="share-hint">选择日期 · 自动更新 · 可分享链接</div>
+
+<script>
+// ============================================================
+// Configuration
+// ============================================================
+const UKRAINE_CENTER = [48.5, 31.5];
+const DEFAULT_ZOOM = 6;
+const UKRAINE_TOTAL_KM2 = 603628;
+const DATA_BASE_URL = 'https://raw.githubusercontent.com/cyterat/deepstate-map-data/main/data';
+const DATA_PREFIX = 'deepstatemap_data_';
+const DATA_MIN_DATE = '2024-07-08';
+
+// Color scheme
+const COLOR_RUSSIAN = '#e8553a';
+const COLOR_RUSSIAN_FILL = 'rgba(232, 85, 58, 0.35)';
+const COLOR_RUSSIAN_BORDER = '#e8553a';
+
+// ============================================================
+// State
+// ============================================================
+let map, geoLayer;
+let currentDate = '';
+let isLoading = false;
+let isUpdatingFromUrl = false;
+
+// ============================================================
+// Init Map
+// ============================================================
+function initMap() {
+  map = L.map('map', {
+    center: UKRAINE_CENTER,
+    zoom: DEFAULT_ZOOM,
+    zoomControl: true,
+    attributionControl: true,
+    fadeAnimation: true,
+    zoomAnimation: true,
+  });
+
+  // CartoDB dark tiles
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>',
+    subdomains: 'abcd',
+    maxZoom: 19,
+    minZoom: 3,
+  }).addTo(map);
+
+  // Fit Ukraine bounds
+  const ukraineBounds = L.latLngBounds(
+    [44.0, 22.0],
+    [52.5, 40.5]
+  );
+  map.fitBounds(ukraineBounds, { padding: [30, 30] });
+}
+
+// ============================================================
+// Data Helpers
+// ============================================================
+function dateToPath(dateStr) {
+  // '2024-07-08' → 'deepstatemap_data_20240708.geojson'
+  const ymd = dateStr.replace(/-/g, '');
+  return `${DATA_PREFIX}${ymd}.geojson`;
+}
+
+function formatDateDisplay(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
+  const wd = weekdays[d.getDay()];
+  return `${y} 年 ${m} 月 ${day} 日 周${wd}`;
+}
+
+function formatNumber(n) {
+  if (n == null || isNaN(n)) return '—';
+  return n.toLocaleString('zh-CN', { maximumFractionDigits: 0 });
+}
+
+function formatPercent(n) {
+  if (n == null || isNaN(n)) return '—';
+  return n.toFixed(2) + '%';
+}
+
+// ============================================================
+// Fetch & Render
+// ============================================================
+function showLoading() {
+  isLoading = true;
+  document.getElementById('loadingOverlay').classList.add('active');
+}
+
+function hideLoading() {
+  isLoading = false;
+  document.getElementById('loadingOverlay').classList.remove('active');
+}
+
+function showError(msg) {
+  const el = document.getElementById('errorToast');
+  el.textContent = msg;
+  el.classList.add('active');
+  setTimeout(() => el.classList.remove('active'), 4000);
+}
+
+function formatAreaDisplay(areaKm2) {
+  if (areaKm2 == null || isNaN(areaKm2)) return { area: '—', percent: '—' };
+  const area = formatNumber(areaKm2) + ' km²';
+  const percent = formatPercent((areaKm2 / UKRAINE_TOTAL_KM2) * 100);
+  return { area, percent };
+}
+
+async function fetchAndRender(dateStr) {
+  if (isLoading) return;
+  if (!dateStr) return;
+
+  const path = dateToPath(dateStr);
+  const url = `${DATA_BASE_URL}/${path}`;
+
+  showLoading();
+  document.getElementById('displayDate').textContent = formatDateDisplay(dateStr);
+
+  try {
+    const resp = await fetch(url);
+
+    if (!resp.ok) {
+      if (resp.status === 404) {
+        showError(`暂无 ${formatDateDisplay(dateStr)} 的战线数据`);
+      } else {
+        showError(`数据加载失败 (${resp.status})`);
+      }
+      clearGeoLayer();
+      document.getElementById('russianArea').textContent = '—';
+      document.getElementById('occPercent').textContent = '—';
+      return;
+    }
+
+    const data = await resp.json();
+
+    // Validate GeoJSON
+    if (!data || data.type !== 'FeatureCollection' || !data.features || data.features.length === 0) {
+      showError('数据格式异常');
+      clearGeoLayer();
+      return;
+    }
+
+    // Render on map
+    renderGeoJSON(data, dateStr);
+
+  } catch (err) {
+    console.error('Fetch error:', err);
+    showError('网络请求失败，请检查网络后重试');
+    clearGeoLayer();
+  } finally {
+    hideLoading();
+  }
+}
+
+function renderGeoJSON(geojson, dateStr) {
+  // Clear previous layer
+  clearGeoLayer();
+
+  // Process features: merge all into one for rendering
+  geoLayer = L.geoJSON(geojson, {
+    style: {
+      color: COLOR_RUSSIAN_BORDER,
+      weight: 1.5,
+      fillColor: COLOR_RUSSIAN_FILL,
+      fillOpacity: 0.5,
+    },
+  }).addTo(map);
+
+  // Calculate area using turf
+  let totalAreaKm2 = 0;
+  try {
+    const areaSqM = turf.area(geojson);
+    totalAreaKm2 = areaSqM / 1_000_000;
+  } catch (e) {
+    console.warn('Area calc failed, estimating...', e);
+    // Fallback: rough estimate from polygon bounds
+    totalAreaKm2 = estimateArea(geojson);
+  }
+
+  // Update info
+  const { area, percent } = formatAreaDisplay(totalAreaKm2);
+  document.getElementById('russianArea').textContent = area;
+  document.getElementById('occPercent').textContent = percent;
+  document.getElementById('displayDate').textContent = formatDateDisplay(dateStr);
+
+  // Fit map to the data bounds
+  try {
+    const bounds = geoLayer.getBounds();
+    if (bounds.isValid()) {
+      map.fitBounds(bounds, { padding: [50, 50], maxZoom: 7 });
+    }
+  } catch (e) {
+    // ignore
+  }
+}
+
+function clearGeoLayer() {
+  if (geoLayer) {
+    map.removeLayer(geoLayer);
+    geoLayer = null;
+  }
+}
+
+// Fallback area estimate using shoelace formula on hull
+function estimateArea(geojson) {
+  try {
+    const areaSqM = turf.area(geojson);
+    if (areaSqM && !isNaN(areaSqM)) return areaSqM / 1_000_000;
+  } catch (e) {}
+  return null;
+}
+
+// ============================================================
+// Date Logic
+// ============================================================
+function getTodayStr() {
+  const now = new Date();
+  // Use UTC+8
+  const local = new Date(now.getTime() + 8 * 60 * 60 * 1000);
+  const y = local.getUTCFullYear();
+  const m = String(local.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(local.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function setupDatePicker() {
+  const picker = document.getElementById('datePicker');
+  const today = getTodayStr();
+
+  picker.min = DATA_MIN_DATE;
+  picker.max = today;
+
+  // Try to load today's date first, or latest available
+  picker.value = today;
+  currentDate = today;
+
+  picker.addEventListener('change', () => {
+    const val = picker.value;
+    if (!val) return;
+    currentDate = val;
+    if (!isUpdatingFromUrl) {
+      updateUrl(val);
+    }
+    fetchAndRender(val);
+  });
+
+  // Today button
+  document.getElementById('btnToday').addEventListener('click', () => {
+    picker.value = today;
+    currentDate = today;
+    updateUrl(today);
+    fetchAndRender(today);
+  });
+}
+
+// ============================================================
+// URL Sharing
+// ============================================================
+function updateUrl(dateStr) {
+  const url = new URL(window.location);
+  url.searchParams.set('date', dateStr);
+  window.history.replaceState({}, '', url);
+}
+
+function loadFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const dateParam = params.get('date');
+  if (dateParam) {
+    // Validate date format YYYY-MM-DD
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+      isUpdatingFromUrl = true;
+      document.getElementById('datePicker').value = dateParam;
+      currentDate = dateParam;
+      isUpdatingFromUrl = false;
+      return dateParam;
+    }
+  }
+  return null;
+}
+
+// ============================================================
+// Keyboard shortcut: R to reset view
+// ============================================================
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'r' || e.key === 'R') {
+    if (!e.ctrlKey && !e.metaKey) {
+      map.setView(UKRAINE_CENTER, DEFAULT_ZOOM);
+    }
+  }
+});
+
+// ============================================================
+// Init
+// ============================================================
+function init() {
+  initMap();
+  setupDatePicker();
+
+  // Load date from URL or use today
+  const urlDate = loadFromUrl();
+  const initialDate = urlDate || getTodayStr();
+
+  // Update URL if not from URL
+  if (!urlDate) {
+    updateUrl(initialDate);
+  }
+
+  fetchAndRender(initialDate);
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
