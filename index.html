@@ -3,305 +3,544 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>俄乌战争战线图 · Ukraine Frontline Map</title>
+<title>俄乌战争战线图 · 战役百科</title>
 
 <!-- Leaflet -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<!-- Turf.js for area calculation -->
+<!-- Turf.js -->
 <script src="https://unpkg.com/@turf/turf@7/turf.min.js"></script>
 
 <style>
-/* ===== Reset & Base ===== */
-*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-html, body { height: 100%; overflow: hidden; }
-body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
-  background: #f5f5f0;
-  color: #2d2d2d;
+*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif;
+  background:#f5f5f0;color:#2d2d2d
+}
+#map{position:fixed;top:0;left:0;right:0;bottom:0;z-index:0}
+
+/* ===== Controls ===== */
+.control-panel{
+  position:fixed;top:14px;left:50%;transform:translateX(-50%);
+  z-index:1000;
+  background:rgba(255,255,255,0.92);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border:1px solid rgba(0,0,0,0.07);border-radius:14px;
+  padding:8px 16px;
+  display:flex;align-items:center;gap:10px;
+  box-shadow:0 4px 24px rgba(0,0,0,0.1);user-select:none;flex-wrap:wrap;justify-content:center
+}
+.control-panel .logo{font-size:14px;font-weight:700;color:#2d2d2d;white-space:nowrap}
+.control-panel .logo span{color:#c0392b}
+.control-panel .divider{width:1px;height:20px;background:rgba(0,0,0,0.08)}
+.control-panel label{font-size:12px;color:rgba(0,0,0,0.5);white-space:nowrap}
+.control-panel input[type="date"]{
+  background:rgba(0,0,0,0.04);border:1px solid rgba(0,0,0,0.1);border-radius:7px;
+  padding:5px 8px;color:#2d2d2d;font-size:12px;font-family:inherit;outline:none;cursor:pointer;min-width:125px
+}
+.control-panel input[type="date"]:focus{border-color:#c0392b}
+.control-panel input[type="date"]::-webkit-calendar-picker-indicator{cursor:pointer}
+.btn-today{
+  background:rgba(192,57,43,0.1);border:1px solid rgba(192,57,43,0.2);border-radius:7px;
+  padding:5px 10px;color:#c0392b;font-size:12px;font-family:inherit;cursor:pointer;white-space:nowrap;transition:all .2s
+}
+.btn-today:hover{background:rgba(192,57,43,0.18)}
+
+.layer-toggle{
+  display:flex;background:rgba(0,0,0,0.04);border-radius:7px;overflow:hidden;border:1px solid rgba(0,0,0,0.08)
+}
+.layer-toggle button{
+  background:transparent;border:none;padding:5px 10px;font-size:11px;cursor:pointer;color:rgba(0,0,0,0.5);font-family:inherit;transition:all .2s
+}
+.layer-toggle button.active{background:#fff;color:#2d2d2d;font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,0.1)}
+.layer-toggle button:hover:not(.active){color:#2d2d2d}
+
+/* ===== Info Bar ===== */
+.info-bar{
+  position:fixed;bottom:16px;left:50%;transform:translateX(-50%);
+  z-index:1000;
+  background:rgba(255,255,255,0.9);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  border:1px solid rgba(0,0,0,0.07);border-radius:12px;
+  padding:8px 18px;display:flex;align-items:center;gap:16px;
+  box-shadow:0 4px 20px rgba(0,0,0,0.07);user-select:none;flex-wrap:wrap;justify-content:center
+}
+.info-item{text-align:center}
+.info-item .label{font-size:10px;color:rgba(0,0,0,0.4);text-transform:uppercase;letter-spacing:.4px;margin-bottom:1px}
+.info-item .value{font-size:14px;font-weight:700;color:#2d2d2d}
+.info-item .value.russian{color:#c0392b}
+.info-item .dot{width:3px;height:3px;border-radius:50%;background:rgba(0,0,0,0.12)}
+.share-hint{
+  position:fixed;bottom:70px;left:50%;transform:translateX(-50%);
+  z-index:1000;font-size:10px;color:rgba(0,0,0,0.2);text-align:center;pointer-events:none
 }
 
-/* ===== Map ===== */
-#map {
-  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-  z-index: 0;
+/* ===== Event Detail Panel ===== */
+.event-panel{
+  position:fixed;top:0;right:-420px;width:400px;height:100%;z-index:2000;
+  background:#fff;box-shadow:-4px 0 40px rgba(0,0,0,0.15);
+  transition:right .35s cubic-bezier(.22,1,.36,1);
+  display:flex;flex-direction:column;overflow:hidden
 }
+.event-panel.open{right:0}
+.event-panel-backdrop{
+  display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:1999;
+  background:rgba(0,0,0,0.3)
+}
+.event-panel-backdrop.open{display:block}
+.event-panel-header{
+  padding:18px 20px 14px;border-bottom:1px solid rgba(0,0,0,0.06);flex-shrink:0
+}
+.event-panel-close{
+  float:right;background:none;border:none;font-size:22px;cursor:pointer;color:rgba(0,0,0,0.3);line-height:1;padding:0 4px
+}
+.event-panel-close:hover{color:#2d2d2d}
+.event-panel-title{font-size:18px;font-weight:700;margin:0 0 4px;padding-right:24px}
+.event-panel-meta{font-size:12px;color:rgba(0,0,0,0.5);display:flex;gap:12px;flex-wrap:wrap}
+.event-panel-meta span{display:flex;align-items:center;gap:4px}
+.badge{
+  display:inline-block;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;text-transform:uppercase;letter-spacing:.3px
+}
+.badge-battle{background:rgba(192,57,43,0.12);color:#c0392b}
+.badge-offensive{background:rgba(230,126,34,0.12);color:#d35400}
+.badge-siege{background:rgba(142,68,173,0.12);color:#8e44ad}
+.badge-event{background:rgba(52,152,219,0.12);color:#2980b9}
+.badge-massacre{background:rgba(0,0,0,0.12);color:#2d2d2d}
 
-/* ===== Top Controls ===== */
-.control-panel {
-  position: fixed;
-  top: 16px; left: 50%;
-  transform: translateX(-50%);
-  z-index: 1000;
-  background: rgba(255, 255, 255, 0.9);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 14px;
-  padding: 10px 18px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-  user-select: none;
+.event-panel-body{
+  flex:1;overflow-y:auto;padding:16px 20px 24px
 }
-.control-panel .logo {
-  font-size: 15px;
-  font-weight: 700;
-  color: #fff;
-  letter-spacing: 0.3px;
-  white-space: nowrap;
-}
-.control-panel .logo span { color: #c0392b; }
-.control-panel .divider {
-  width: 1px; height: 24px;
-  background: rgba(0,0,0,0.1);
-}
-.control-panel label {
-  font-size: 13px;
-  color: rgba(0,0,0,0.5);
-  white-space: nowrap;
-}
-.control-panel input[type="date"] {
-  background: rgba(0,0,0,0.04);
-  border: 1px solid rgba(0,0,0,0.12);
-  border-radius: 8px;
-  padding: 6px 10px;
-  color: #2d2d2d;
-  font-size: 13px;
-  font-family: inherit;
-  outline: none;
-  cursor: pointer;
-  transition: border-color 0.2s;
-  min-width: 140px;
-}
-.control-panel input[type="date"]:focus {
-  border-color: #c0392b;
-}
-.control-panel input[type="date"]::-webkit-calendar-picker-indicator {
-  filter: none;
-  cursor: pointer;
-}
-.control-panel input[type="date"]:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
+.event-desc{font-size:14px;line-height:1.7;color:#444;margin-bottom:18px}
 
-/* ===== Today button ===== */
-.btn-today {
-  background: rgba(192, 57, 43, 0.1);
-  border: 1px solid rgba(192, 57, 43, 0.25);
-  border-radius: 8px;
-  padding: 6px 12px;
-  color: #c0392b;
-  font-size: 12px;
-  font-family: inherit;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: all 0.2s;
+/* Sources section */
+.sources-section h3{
+  font-size:13px;font-weight:700;color:#2d2d2d;margin:0 0 10px;display:flex;align-items:center;gap:6px
 }
-.btn-today:hover {
-  background: rgba(192, 57, 43, 0.18);
+.source-card{
+  background:rgba(0,0,0,0.03);border:1px solid rgba(0,0,0,0.06);border-radius:10px;
+  padding:12px 14px;margin-bottom:8px;transition:background .2s
 }
-.btn-today:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
+.source-card:hover{background:rgba(0,0,0,0.05)}
+.source-card .source-name{
+  font-size:11px;font-weight:600;color:rgba(0,0,0,0.4);text-transform:uppercase;letter-spacing:.3px;margin-bottom:2px
 }
+.source-card .source-title{
+  font-size:13px;color:#2d2d2d;font-weight:500;margin-bottom:2px
+}
+.source-card .source-link{
+  font-size:11px;color:#2980b9;text-decoration:none;word-break:break-all
+}
+.source-card .source-link:hover{text-decoration:underline}
 
-/* ===== Bottom Info ===== */
-.info-bar {
-  position: fixed;
-  bottom: 20px; left: 50%;
-  transform: translateX(-50%);
-  z-index: 1000;
-  background: rgba(255, 255, 255, 0.88);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 12px;
-  padding: 10px 20px;
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-  user-select: none;
-  flex-wrap: wrap;
-  justify-content: center;
+/* No event state */
+.event-placeholder{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  height:100%;color:rgba(0,0,0,0.25);text-align:center;padding:40px
 }
-.info-item {
-  text-align: center;
-}
-.info-item .label {
-  font-size: 11px;
-  color: rgba(0,0,0,0.4);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 2px;
-}
-.info-item .value {
-  font-size: 16px;
-  font-weight: 700;
-  color: #2d2d2d;
-}
-.info-item .value.russian { color: #c0392b; }
-.info-item .value.ukraine { color: #2980b9; }
-.info-item .divider-dot {
-  width: 4px; height: 4px;
-  border-radius: 50%;
-  background: rgba(0,0,0,0.15);
-}
+.event-placeholder .icon{font-size:48px;margin-bottom:12px}
+.event-placeholder p{font-size:13px;line-height:1.6}
 
-/* ===== Loading Spinner ===== */
-.loading-overlay {
-  display: none;
-  position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-  z-index: 999;
-  background: rgba(255, 255, 255, 0.5);
-  backdrop-filter: blur(2px);
-  align-items: center;
-  justify-content: center;
+/* ===== Legend ===== */
+.map-legend{
+  position:fixed;left:12px;bottom:80px;z-index:1000;
+  background:rgba(255,255,255,0.9);backdrop-filter:blur(8px);
+  border:1px solid rgba(0,0,0,0.07);border-radius:10px;
+  padding:10px 14px;font-size:11px;box-shadow:0 2px 12px rgba(0,0,0,0.06);
+  user-select:none
 }
-.loading-overlay.active { display: flex; }
-.spinner {
-  width: 40px; height: 40px;
-  border: 3px solid rgba(0,0,0,0.06);
-  border-top-color: #c0392b;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
-
-/* ===== Error Toast ===== */
-.error-toast {
-  display: none;
-  position: fixed;
-  top: 80px; left: 50%;
-  transform: translateX(-50%);
-  z-index: 1001;
-  background: rgba(220, 50, 50, 0.92);
-  backdrop-filter: blur(8px);
-  border-radius: 10px;
-  padding: 10px 20px;
-  font-size: 13px;
-  color: #fff;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-  text-align: center;
-  max-width: 90vw;
-  animation: fadeIn 0.3s ease;
-}
-.error-toast.active { display: block; }
-@keyframes fadeIn { from { opacity: 0; transform: translateX(-50%) translateY(-8px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+.map-legend .legend-item{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+.map-legend .legend-item:last-child{margin-bottom:0}
+.map-legend .legend-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.map-legend .legend-dot.battle{background:#c0392b}
+.map-legend .legend-dot.offensive{background:#d35400}
+.map-legend .legend-dot.siege{background:#8e44ad}
+.map-legend .legend-dot.event{background:#2980b9}
 
 /* ===== Leaflet Overrides ===== */
-.leaflet-control-zoom a {
-  background: rgba(255, 255, 255, 0.92) !important;
-  color: #2d2d2d !important;
-  border-color: rgba(0,0,0,0.1) !important;
+.leaflet-control-zoom a{
+  background:rgba(255,255,255,0.92)!important;
+  color:#2d2d2d!important;border-color:rgba(0,0,0,0.08)!important
 }
-.leaflet-control-zoom a:hover {
-  background: rgba(255, 255, 255, 1) !important;
+.leaflet-control-zoom a:hover{background:#fff!important}
+.leaflet-control-attribution{
+  background:rgba(255,255,255,0.5)!important;
+  color:rgba(0,0,0,0.3)!important;font-size:9px!important;padding:1px 5px!important
 }
-.leaflet-control-attribution {
-  background: rgba(255,255,255,0.6) !important;
-  color: rgba(0,0,0,0.35) !important;
-  font-size: 10px !important;
-  padding: 2px 6px !important;
-}
-.leaflet-control-attribution a {
-  color: rgba(0,0,0,0.4) !important;
-}
+.leaflet-control-attribution a{color:rgba(0,0,0,0.35)!important}
 
-/* ===== Mobile Responsive ===== */
-@media (max-width: 640px) {
-  .control-panel {
-    top: 10px;
-    padding: 8px 12px;
-    gap: 8px;
-    flex-wrap: wrap;
-    justify-content: center;
-    width: calc(100% - 20px);
-    border-radius: 10px;
-  }
-  .control-panel .logo { font-size: 13px; }
-  .control-panel .divider { display: none; }
-  .control-panel label { font-size: 12px; }
-  .control-panel input[type="date"] {
-    font-size: 12px;
-    padding: 5px 8px;
-    min-width: 120px;
-    flex: 1;
-  }
-  .info-bar {
-    bottom: 12px;
-    padding: 8px 14px;
-    gap: 12px;
-    width: calc(100% - 20px);
-    border-radius: 10px;
-  }
-  .info-item .value { font-size: 14px; }
-  .info-item .label { font-size: 10px; }
-}
-
-/* ===== Share hint ===== */
-.share-hint {
-  position: fixed;
-  bottom: 80px; left: 50%;
-  transform: translateX(-50%);
-  z-index: 1000;
-  font-size: 11px;
-  color: rgba(0,0,0,0.25);
-  text-align: center;
-  pointer-events: none;
-}
-@media (max-width: 640px) {
-  .share-hint { bottom: 72px; font-size: 10px; }
+/* ===== Mobile ===== */
+@media(max-width:640px){
+  .control-panel{top:8px;padding:6px 10px;gap:6px;width:calc(100% - 12px);border-radius:10px}
+  .control-panel .logo{font-size:12px}
+  .control-panel input[type="date"]{font-size:11px;min-width:100px;flex:1}
+  .layer-toggle button{padding:4px 7px;font-size:10px}
+  .event-panel{width:100%;right:-100%}
+  .info-bar{bottom:10px;padding:6px 12px;gap:10px;width:calc(100% - 12px);border-radius:10px}
+  .info-item .value{font-size:13px}
+  .share-hint{display:none}
+  .map-legend{left:8px;bottom:65px;padding:8px 10px;font-size:10px}
 }
 </style>
 </head>
 <body>
 
-<!-- Map Container -->
 <div id="map"></div>
 
-<!-- Loading Overlay -->
-<div class="loading-overlay" id="loadingOverlay">
-  <div class="spinner"></div>
+<!-- Loading -->
+<div class="loading-overlay" id="loadingOverlay" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:999;background:rgba(255,255,255,.5);align-items:center;justify-content:center">
+  <div class="spinner" style="width:36px;height:36px;border:3px solid rgba(0,0,0,.06);border-top-color:#c0392b;border-radius:50%;animation:spin .8s linear infinite"></div>
 </div>
+<style>@keyframes spin{to{transform:rotate(360deg)}}</style>
 
 <!-- Error Toast -->
-<div class="error-toast" id="errorToast"></div>
+<div class="error-toast" id="errorToast" style="display:none;position:fixed;top:72px;left:50%;transform:translateX(-50%);z-index:1001;background:rgba(220,50,50,.92);backdrop-filter:blur(8px);border-radius:10px;padding:8px 18px;font-size:13px;color:#fff;box-shadow:0 4px 20px rgba(0,0,0,.3);text-align:center;max-width:90vw"></div>
 
-<!-- Top Control Panel -->
-<div class="control-panel" id="controlPanel">
+<!-- Top Controls -->
+<div class="control-panel">
   <div class="logo"><span>◉</span> 战线图</div>
   <div class="divider"></div>
   <label for="datePicker">📅</label>
-  <input type="date" id="datePicker" />
+  <input type="date" id="datePicker">
   <button class="btn-today" id="btnToday">今日</button>
-</div>
-
-<!-- Bottom Info Bar -->
-<div class="info-bar" id="infoBar">
-  <div class="info-item">
-    <div class="label">日期</div>
-    <div class="value" id="displayDate">—</div>
-  </div>
-  <div class="divider-dot"></div>
-  <div class="info-item">
-    <div class="label">俄控面积</div>
-    <div class="value russian" id="russianArea">—</div>
-  </div>
-  <div class="divider-dot"></div>
-  <div class="info-item">
-    <div class="label">占比</div>
-    <div class="value" id="occPercent">—</div>
+  <div class="divider"></div>
+  <div class="layer-toggle" id="layerToggle">
+    <button data-layer="street" class="active">🗺️ 地图</button>
+    <button data-layer="satellite">🛰️ 卫星</button>
   </div>
 </div>
 
-<div class="share-hint">选择日期 · 自动更新 · 可分享链接</div>
+<!-- Bottom Info -->
+<div class="info-bar">
+  <div class="info-item"><div class="label">日期</div><div class="value" id="displayDate">—</div></div>
+  <div class="dot"></div>
+  <div class="info-item"><div class="label">俄控面积</div><div class="value russian" id="russianArea">—</div></div>
+  <div class="dot"></div>
+  <div class="info-item"><div class="label">占比</div><div class="value" id="occPercent">—</div></div>
+  <div class="dot"></div>
+  <div class="info-item"><div class="label">战役标记</div><div class="value" id="eventCount">—</div></div>
+</div>
+
+<div class="share-hint">点战役标记查看详情 · 多方交叉验证</div>
+
+<!-- Map Legend -->
+<div class="map-legend">
+  <div class="legend-item"><div class="legend-dot battle"></div>战役/战斗</div>
+  <div class="legend-item"><div class="legend-dot offensive"></div>反攻/攻势</div>
+  <div class="legend-item"><div class="legend-dot siege"></div>围城战</div>
+  <div class="legend-item"><div class="legend-dot event"></div>重大事件</div>
+</div>
+
+<!-- Event Detail Panel -->
+<div class="event-panel-backdrop" id="panelBackdrop"></div>
+<div class="event-panel" id="eventPanel">
+  <div class="event-panel-header">
+    <button class="event-panel-close" id="panelClose">✕</button>
+    <div class="event-panel-title" id="panelTitle">战役名称</div>
+    <div class="event-panel-meta">
+      <span id="panelBadge"></span>
+      <span id="panelDate"></span>
+      <span id="panelLoc"></span>
+    </div>
+  </div>
+  <div class="event-panel-body" id="panelBody">
+    <div class="event-placeholder" id="panelPlaceholder">
+      <div class="icon">🗺️</div>
+      <p>点击地图上的战役标记<br>查看详细报道与多方来源</p>
+    </div>
+    <div id="panelContent" style="display:none">
+      <div class="event-desc" id="panelDesc"></div>
+      <div class="sources-section" id="panelSources">
+        <h3>📰 多方交叉验证</h3>
+        <div id="sourceList"></div>
+      </div>
+    </div>
+  </div>
+</div>
 
 <script>
+// ============================================================
+// BATTLE EVENTS DATA
+// ============================================================
+const EVENTS = [
+  {
+    id:'kyiv-offensive',name:'基辅战役',type:'battle',
+    startDate:'2022-02-24',endDate:'2022-04-02',
+    lat:50.45,lng:30.52,
+    desc:'俄军从白俄罗斯方向分三路进攻基辅，意图快速占领乌克兰首都。乌克兰军队在基辅郊区顽强抵抗，最终俄军于4月初全面撤出基辅州。俄军撤退后，在布查、伊尔平等地发现大量平民遗体，引发国际社会强烈谴责。',
+    sources:[
+      {name:'BBC','title':'Ukraine war: Russia forced to abandon Kyiv','url':'https://www.bbc.com/news/world-europe-60959068'},
+      {name:'ISW','title':'Russian Offensive Campaign Assessment, April 2022','url':'https://www.understandingwar.org/backgrounder/russian-offensive-campaign-assessment-april-4'},
+      {name:'Al Jazeera','title':'Russia retreats from Kyiv region','url':'https://www.aljazeera.com/news/2022/4/2/russia-retreats-from-kyiv-region-ukraine-says-fight-in-east-next'},
+      {name:'NYT','title':'The Battle for Kyiv: How Ukrainians Won','url':'https://www.nytimes.com/2022/04/28/world/europe/ukraine-kyiv-russia-war.html'}
+    ]
+  },
+  {
+    id:'mariupol-siege',name:'马里乌波尔围城战',type:'siege',
+    startDate:'2022-02-24',endDate:'2022-05-20',
+    lat:47.10,lng:37.55,
+    desc:'俄军对马里乌波尔进行了长达近三个月的围困和轰炸，城市被彻底摧毁，超90%的建筑受损。亚速钢铁厂成为乌军最后据点，守军在弹尽粮绝后投降。联合国估计至少数千平民丧生。',
+    sources:[
+      {name:'UN','title':'Mariupol: Death, deprivation and desperation','url':'https://www.ohchr.org/en/news/2022/06/mariupol-death-deprivation-and-desperation'},
+      {name:'BBC','title':'The battle for Mariupol explained','url':'https://www.bbc.com/news/world-europe-61017382'},
+      {name:'Reuters','title':'Mariupol defenders surrender','url':'https://www.reuters.com/world/europe/mariupol-defenders-surrender-russia-says-fully-2022-05-20/'},
+      {name:'Guardian','title':'Azovstal: inside the siege','url':'https://www.theguardian.com/world/2022/may/19/azovstal-mariupol-siege-ukraine-war'}
+    ]
+  },
+  {
+    id:'kharkiv-battle',name:'哈尔科夫战役',type:'battle',
+    startDate:'2022-02-24',endDate:'2022-05-14',
+    lat:49.99,lng:36.23,
+    desc:'俄军从别尔哥罗德方向进攻乌克兰第二大城市哈尔科夫，但始终未能攻入市中心。乌克兰军队在城市外围构筑坚固防线，经过近三个月的战斗，最终将俄军击退至边境线。',
+    sources:[
+      {name:'BBC','title':'How Ukraine won the battle of Kharkiv','url':'https://www.bbc.com/news/world-europe-61430727'},
+      {name:'ISW','title':'UkraineCounteroffensive Kharkiv','url':'https://www.understandingwar.org/backgrounder/ukraine-counteroffensive-kharkiv'},
+      {name:'CNN','title':'Kharkiv: The city that refused to fall','url':'https://www.cnn.com/2022/05/13/europe/kharkiv-ukraine-russia-war-intl/index.html'},
+      {name:'Guardian','title':'Kharkiv residents celebrate liberation','url':'https://www.theguardian.com/world/2022/may/14/kharkiv-ukraine-russian-forces-pushed-back'}
+    ]
+  },
+  {
+    id:'kherson-occupation',name:'赫尔松战役与光复',type:'battle',
+    startDate:'2022-02-24',endDate:'2022-11-11',
+    lat:46.64,lng:32.61,
+    desc:'赫尔松是俄军在战争初期唯一完整占领的乌克兰州府。俄军于3月2日攻占该市，随后乌克兰军队于8月发动反攻，经过数月的消耗战，俄军最终于11月11日撤出赫尔松市。这是乌克兰战争中的一次重大转折。',
+    sources:[
+      {name:'ISW','title':'Russia withdraws from Kherson','url':'https://www.understandingwar.org/backgrounder/russian-offensive-campaign-assessment-november-11-2022'},
+      {name:'BBC','title':'Kherson: The city Russia seized and then gave up','url':'https://www.bbc.com/news/world-europe-63570909'},
+      {name:'Reuters','title':'Russia abandons Kherson city','url':'https://www.reuters.com/world/europe/russia-says-withdrawal-kherson-complete-2022-11-11/'},
+      {name:'Guardian','title':'Joy in Kherson as Ukrainian troops enter','url':'https://www.theguardian.com/world/2022/nov/11/ukrainian-troops-enter-kherson-city-in-major-setback-for-putin'}
+    ]
+  },
+  {
+    id:'snake-island',name:'蛇岛争夺战',type:'battle',
+    startDate:'2022-02-24',endDate:'2022-06-30',
+    lat:45.25,lng:30.20,
+    desc:'蛇岛是乌克兰在黑海的关键战略据点。战争首日，俄军巡洋舰"莫斯科号"要求岛上乌军投降，获经典回复"去你X的"。俄军迅速占领蛇岛，乌克兰随后使用无人机和火炮持续打击。6月30日，俄军被迫撤离蛇岛，这为乌克兰恢复黑海粮食出口通道创造了条件。',
+    sources:[
+      {name:'BBC','title':'Snake Island: Ukraine troops tell Russia to go fuck themselves','url':'https://www.bbc.com/news/world-europe-60501603'},
+      {name:'Al Jazeera','title':'Russia withdraws from Snake Island','url':'https://www.aljazeera.com/news/2022/6/30/russia-withdraws-from-snake-island'},
+      {name:'NYT','title':'Ukraine drives Russians from strategic Snake Island','url':'https://www.nytimes.com/2022/06/30/world/europe/snake-island-ukraine-russia.html'},
+      {name:'Reuters','title':'Russia says it pulled troops from Snake Island as goodwill gesture','url':'https://www.reuters.com/world/europe/russia-says-it-pulled-troops-snake-island-goodwill-gesture-2022-06-30/'}
+    ]
+  },
+  {
+    id:'severodonetsk',name:'北顿涅茨克战役',type:'battle',
+    startDate:'2022-05-06',endDate:'2022-06-25',
+    lat:48.95,lng:38.48,
+    desc:'俄军集结重兵进攻北顿涅茨克，意图完全控制卢甘斯克州。俄军使用大规模炮火逐步压缩乌军防线，经过近两个月的激烈巷战，乌军被迫撤离该市，退守河对岸的利西昌斯克。',
+    sources:[
+      {name:'BBC','title':'Severodonetsk falls to Russia after weeks of fighting','url':'https://www.bbc.com/news/world-europe-61926099'},
+      {name:'ISW','title':'Russian seizure of Severodonetsk','url':'https://www.understandingwar.org/backgrounder/russian-offensive-campaign-assessment-june-25'},
+      {name:'Reuters','title':'Ukraine orders withdrawal from Severodonetsk','url':'https://www.reuters.com/world/europe/ukraine-forces-may-have-leave-severodonetsk-military-says-2022-06-24/'}
+    ]
+  },
+  {
+    id:'lysychansk',name:'利西昌斯克战役',type:'battle',
+    startDate:'2022-06-25',endDate:'2022-07-03',
+    lat:48.92,lng:38.42,
+    desc:'俄军攻克北顿涅茨克后迅速渡过北顿涅茨克河，从三面包围利西昌斯克。乌军在补给线路被切断后，于7月3日下令撤离。俄军完全控制了卢甘斯克州。',
+    sources:[
+      {name:'BBC','title':'Lysychansk falls as Russia takes full control of Luhansk','url':'https://www.bbc.com/news/world-europe-62014704'},
+      {name:'ISW','title':'Russian capture of Lysychansk','url':'https://www.understandingwar.org/backgrounder/russian-offensive-campaign-assessment-july-3'},
+      {name:'Reuters','title':'Ukraine ends Lysychansk battle','url':'https://www.reuters.com/world/europe/russia-says-its-forces-take-full-control-lysychansk-2022-07-03/'}
+    ]
+  },
+  {
+    id:'kharkiv-counter',name:'哈尔科夫大反攻',type:'offensive',
+    startDate:'2022-09-06',endDate:'2022-10-02',
+    lat:49.60,lng:36.90,
+    desc:'乌军从哈尔科夫东北方向发动闪电反攻，迅速突破俄军防线。在短短数天内收复了巴拉克利亚、库皮扬斯克和伊久姆等重镇，俄军仓促撤退，留下大量装备。这是乌军在战争中最大的反攻胜利之一。',
+    sources:[
+      {name:'BBC','title':'Ukraine offensive: Kharkiv region recaptured','url':'https://www.bbc.com/news/world-europe-62871405'},
+      {name:'ISW','title':'Ukrainian Counteroffensive in Kharkiv','url':'https://www.understandingwar.org/backgrounder/ukrainian-counteroffensive-kharkiv'},
+      {name:'NYT','title':'Blitzkrieg: Ukraine routs Russians in Kharkiv','url':'https://www.nytimes.com/2022/09/10/world/europe/ukraine-russia-kharkiv-counteroffensive.html'},
+      {name:'Al Jazeera','title':'Ukraine retakes key towns in Kharkiv region','url':'https://www.aljazeera.com/news/2022/9/10/ukraine-takes-key-towns-in-kharkiv-region-as-russian-forces-retreat'}
+    ]
+  },
+  {
+    id:'lyman-battle',name:'利曼战役',type:'battle',
+    startDate:'2022-09-20',endDate:'2022-10-01',
+    lat:48.99,lng:37.80,
+    desc:'乌军在哈尔科夫反攻后，继续向顿涅茨克北部的战略重镇利曼推进。经过约10天的激战，乌军成功包围利曼并收复该市，切断了俄军在顿涅茨克北部的重要补给线。',
+    sources:[
+      {name:'BBC','title':'Ukraine recaptures key town of Lyman','url':'https://www.bbc.com/news/world-europe-63103127'},
+      {name:'ISW','title':'Ukraine recaptures Lyman','url':'https://www.understandingwar.org/backgrounder/russian-offensive-campaign-assessment-october-1'},
+      {name:'Reuters','title':'Russian forces retreat from Lyman','url':'https://www.reuters.com/world/europe/ukraine-forces-enter-lyman-russian-defense-ministry-2022-10-01/'}
+    ]
+  },
+  {
+    id:'kherson-counter',name:'赫尔松大反攻',type:'offensive',
+    startDate:'2022-08-29',endDate:'2022-11-11',
+    lat:46.80,lng:33.00,
+    desc:'乌军在赫尔松方向发动大规模反攻，持续打击俄军补给线（特别是第聂伯河上的桥梁），逐步压缩俄军占领区。经过数月的消耗战，俄军最终下令从第聂伯河右岸撤离，乌军光复赫尔松市。',
+    sources:[
+      {name:'ISW','title':'Ukraine\'s Kherson campaign','url':'https://www.understandingwar.org/backgrounder/ukraines-kherson-campaign'},
+      {name:'BBC','title':'Kherson liberation: What it means for Ukraine','url':'https://www.bbc.com/news/world-europe-63591516'},
+      {name:'Al Jazeera','title':'Ukraine troops enter Kherson after Russian withdrawal','url':'https://www.aljazeera.com/news/2022/11/11/ukraine-forces-enter-kherson-after-russian-withdrawal'},
+      {name:'NYT','title':'The Battle for Kherson: A turning point','url':'https://www.nytimes.com/2022/11/11/world/europe/kherson-ukraine-russia-liberation.html'}
+    ]
+  },
+  {
+    id:'bakhmut',name:'巴赫穆特战役',type:'battle',
+    startDate:'2022-10-01',endDate:'2023-05-20',
+    lat:48.60,lng:38.00,
+    desc:'俄乌战争中持续时间最长、伤亡最惨烈的战役。俄军主要由瓦格纳雇佣兵集团担任主攻，采用"绞肉机"战术逐街逐屋推进。经过近8个月的残酷巷战，乌军于2023年5月撤出市中心，巴赫穆特几乎被完全摧毁。',
+    sources:[
+      {name:'BBC','title':'Bakhmut: The longest and bloodiest battle','url':'https://www.bbc.com/news/world-europe-65662947'},
+      {name:'ISW','title':'Battle of Bakhmut: A timeline','url':'https://www.understandingwar.org/backgrounder/bakhmut-timeline'},
+      {name:'NYT','title':'Inside the brutal battle for Bakhmut','url':'https://www.nytimes.com/2022/12/10/world/europe/bakhmut-ukraine-russia-war.html'},
+      {name:'Reuters','title':'Russia claims capture of Bakhmut','url':'https://www.reuters.com/world/europe/russia-says-its-forces-have-taken-full-control-over-bakhmut-2023-05-20/'},
+      {name:'CNN','title':'Wagner claims Bakhmut captured','url':'https://www.cnn.com/2023/05/20/europe/bakhmut-wagner-prigozhin-claim-intl/index.html'}
+    ]
+  },
+  {
+    id:'soledar',name:'索莱达尔战役',type:'battle',
+    startDate:'2022-08-01',endDate:'2023-01-16',
+    lat:48.68,lng:38.09,
+    desc:'索莱达尔是巴赫穆特东北方向的盐矿小镇，拥有欧洲最大的盐矿隧道网络。俄军和瓦格纳雇佣兵在巨大伤亡代价下逐步推进，最终攻克该镇。占领索莱达尔为俄军从东北方向侧翼进攻巴赫穆特创造了条件。',
+    sources:[
+      {name:'BBC','title':'Soledar: Why Russia wants the salt-mining town','url':'https://www.bbc.com/news/world-europe-64257419'},
+      {name:'ISW','title':'Russian capture of Soledar','url':'https://www.understandingwar.org/backgrounder/russian-offensive-campaign-assessment-january-16-2023'},
+      {name:'Guardian','title':'Russia claims capture of Soledar','url':'https://www.theguardian.com/world/2023/jan/16/russia-claims-capture-of-salt-mining-town-soledar-in-ukraine'}
+    ]
+  },
+  {
+    id:'vuhledar-2023',name:'武赫莱达尔战役',type:'battle',
+    startDate:'2022-11-01',endDate:'2023-02-28',
+    lat:47.78,lng:37.25,
+    desc:'俄军在顿涅茨克南部的武赫莱达尔发动大规模装甲进攻，试图包围该城。乌军利用地形优势和精准炮火，在此战中摧毁了大量俄军坦克和装甲车。俄军遭受了战争中最严重的单次装甲损失之一。',
+    sources:[
+      {name:'BBC','title':'Vuhledar: Russia\'s tank graveyard','url':'https://www.bbc.com/news/world-europe-64656181'},
+      {name:'ISW','title':'Russian failures at Vuhledar','url':'https://www.understandingwar.org/backgrounder/russian-offensive-campaign-assessment-february-13-2023'},
+      {name:'Forbes','title':'Russia lost dozens of vehicles in Vuhledar assault','url':'https://www.forbes.com/sites/davidaxe/2023/02/09/russia-lost-dozens-of-vehicles-in-a-failed-assault-on-ukrainian-held-vuhledar/'}
+    ]
+  },
+  {
+    id:'summer-2023-counter',name:'2023年夏季反攻',type:'offensive',
+    startDate:'2023-06-04',endDate:'2023-08-28',
+    lat:47.50,lng:36.50,
+    desc:'乌克兰军队在扎波罗热方向发动大规模反攻，以南线罗博季涅-托克马克为主攻方向。乌军面临俄军纵深达数十公里的雷区和多层防线，进展缓慢且损失惨重。最终乌军攻占了罗博季涅等定居点，但未达到突破至亚速海的主要战略目标。',
+    sources:[
+      {name:'BBC','title':'Ukraine counteroffensive: The setbacks and successes','url':'https://www.bbc.com/news/world-europe-66008343'},
+      {name:'ISW','title':'Ukraine\'s Summer 2023 Counteroffensive','url':'https://www.understandingwar.org/backgrounder/ukraines-summer-2023-counteroffensive'},
+      {name:'NYT','title':'The Counteroffensive: What went right and wrong','url':'https://www.nytimes.com/2023/08/28/world/europe/ukraine-counteroffensive-assessment.html'},
+      {name:'Reuters','title':'Ukraine breaches first line of Russian defenses','url':'https://www.reuters.com/world/europe/ukraine-forces-breach-first-line-russian-defences-zaporizhzhia-region-2023-08-20/'}
+    ]
+  },
+  {
+    id:'avdiivka',name:'阿夫迪伊夫卡战役',type:'battle',
+    startDate:'2023-10-10',endDate:'2024-02-17',
+    lat:48.16,lng:37.75,
+    desc:'俄军从北、东、南三面围攻关东市郊的阿夫迪伊夫卡，该城是乌军在顿涅茨克市附近的核心要塞。俄军采用钳形攻势，经过近四个月的激烈战斗，在付出重大伤亡后逐步合围。乌军最终于2月17日下令撤离，俄军占领该城。',
+    sources:[
+      {name:'BBC','title':'Avdiivka: Why Russia wants the frontline town','url':'https://www.bbc.com/news/world-europe-68236682'},
+      {name:'ISW','title':'Russian capture of Avdiivka','url':'https://www.understandingwar.org/backgrounder/russian-offensive-campaign-assessment-february-17-2024'},
+      {name:'NYT','title':'Ukraine withdraws from Avdiivka','url':'https://www.nytimes.com/2024/02/17/world/europe/avdiivka-ukraine-withdrawal-russia.html'},
+      {name:'Reuters','title':'Russia claims full control of Avdiivka','url':'https://www.reuters.com/world/europe/russia-says-its-forces-take-full-control-over-avdiivka-2024-02-17/'}
+    ]
+  },
+  {
+    id:'marinka',name:'马林卡战役',type:'battle',
+    startDate:'2022-02-24',endDate:'2023-12-25',
+    lat:47.94,lng:37.50,
+    desc:'俄乌战争中破坏最彻底的城镇之一。俄军从战争第一天就试图攻占马林卡，该城在近两年的战斗中被彻底夷为平地。俄军逐街推进，付出巨大伤亡，最终在2023年底完全控制该城。',
+    sources:[
+      {name:'BBC','title':'Marinka: The town destroyed in the war','url':'https://www.bbc.com/news/world-europe-68067419'},
+      {name:'ISW','title':'Russia captures Marinka','url':'https://www.understandingwar.org/backgrounder/russian-offensive-campaign-assessment-december-25-2023'},
+      {name:'Reuters','title':'Russia says it captures Marinka','url':'https://www.reuters.com/world/europe/russia-says-its-forces-capture-marinka-eastern-ukraine-2023-12-25/'}
+    ]
+  },
+  {
+    id:'chasiv-yar',name:'恰西夫亚尔战役',type:'battle',
+    startDate:'2024-04-01',endDate:'至今',
+    lat:48.58,lng:37.83,
+    desc:'恰西夫亚尔是巴赫穆特以西的战略高地城镇，地势居高临下控制通往顿涅茨克要塞群的要道。俄军自2024年4月起持续进攻，利用炮火优势和滑翔炸弹逐步推进。乌军在此建立了三道防线，战斗仍在持续。',
+    sources:[
+      {name:'ISW','title':'Russian offensive in Chasiv Yar','url':'https://www.understandingwar.org/backgrounder/russian-offensive-campaign-assessment-april-5-2024'},
+      {name:'BBC','title':'Chasiv Yar: The next target','url':'https://www.bbc.com/news/world-europe-68747883'},
+      {name:'Reuters','title':'Russia advances on Chasiv Yar','url':'https://www.reuters.com/world/europe/russian-forces-approach-chasiv-yar-key-ukraine-defence-city-2024-04-13/'}
+    ]
+  },
+  {
+    id:'kusk-incursion',name:'库尔斯克入侵',type:'offensive',
+    startDate:'2024-08-06',endDate:'至今',
+    lat:51.20,lng:35.30,
+    desc:'乌军出人意料地攻入俄罗斯库尔斯克州，这是二战以来首次有外国军队进入俄罗斯领土。乌军迅速占领了约1300平方公里的俄罗斯领土和数十个定居点，迫使俄军从乌东前线调动部队回防。这次行动改变了战争的政治和心理态势。',
+    sources:[
+      {name:'BBC','title':'Ukraine launches offensive inside Russia','url':'https://www.bbc.com/news/articles/c4ngk7en1y7o'},
+      {name:'ISW','title':'Ukraine\'s Kursk Incursion: An Assessment','url':'https://www.understandingwar.org/backgrounder/ukraines-kursk-incursion'},
+      {name:'NYT','title':'Ukraine pierces Russian border in audacious assault','url':'https://www.nytimes.com/2024/08/08/world/europe/ukraine-russia-kursk-incursion.html'},
+      {name:'Al Jazeera','title':'Ukraine advances into Russia\'s Kursk region','url':'https://www.aljazeera.com/news/2024/8/8/ukraine-launches-ground-offensive-into-russias-kursk-region'}
+    ]
+  },
+  {
+    id:'pokrovsk',name:'波克罗夫斯克战役',type:'siege',
+    startDate:'2024-08-01',endDate:'至今',
+    lat:48.28,lng:37.18,
+    desc:'俄军在攻克阿夫迪伊夫卡后，迅速向西推进至波克罗夫斯克（原红军城）城下。该城是顿涅茨克西部最重要的后勤枢纽，连接多条公路和铁路线。俄军从东面和南面推进，试图切断乌军补给线。至2025年初，俄军已推进至城郊并开始攻城。',
+    sources:[
+      {name:'BBC','title':'Pokrovsk: Ukraine\'s strategic supply hub under threat','url':'https://www.bbc.com/news/articles/c23z964lv84o'},
+      {name:'ISW','title':'Russian advance on Pokrovsk','url':'https://www.understandingwar.org/backgrounder/russian-offensive-campaign-assessment-august-28-2024'},
+      {name:'Reuters','title':'Russia closes in on Pokrovsk','url':'https://www.reuters.com/world/europe/russian-forces-approach-pokrovsk-ukraine-2024-08-27/'}
+    ]
+  },
+  {
+    id:'vuhledar-2024',name:'武赫莱达尔陷落',type:'battle',
+    startDate:'2024-09-01',endDate:'2024-10-01',
+    lat:47.78,lng:37.25,
+    desc:'经过近两年的战斗，俄军于2024年9月再次大规模进攻武赫莱达尔，这次从两翼包抄而非正面强攻。乌军补给线被切断后，于10月初下令撤离，结束了顿涅茨克南线最持久的防御战。',
+    sources:[
+      {name:'BBC','title':'Ukraine withdraws from Vuhledar','url':'https://www.bbc.com/news/articles/c5y3v29vpyxo'},
+      {name:'ISW','title':'Russia captures Vuhledar','url':'https://www.understandingwar.org/backgrounder/russian-offensive-campaign-assessment-october-1-2024'},
+      {name:'Reuters','title':'Russian forces capture Vuhledar','url':'https://www.reuters.com/world/europe/russian-forces-capture-vuhledar-ukraine-2024-10-01/'}
+    ]
+  },
+  {
+    id:'toretsk',name:'托列茨克（纽约克）战役',type:'battle',
+    startDate:'2024-06-01',endDate:'至今',
+    lat:48.39,lng:37.84,
+    desc:'俄军自2024年夏季进攻托列茨克（原名纽约克，乌克兰最有趣的城镇名），试图在巴赫穆特以南打开新战线。战斗在城区和外围工业区持续进行。',
+    sources:[
+      {name:'ISW','title':'Russian offensive in Toretsk','url':'https://www.understandingwar.org/backgrounder/russian-offensive-campaign-assessment-june-25-2024'},
+      {name:'BBC','title':'Toretsk: Fighting in the town formerly known as New York','url':'https://www.bbc.com/news/articles/cz5x7e9n8yro'},
+      {name:'Reuters','title':'Russia advances on Toretsk','url':'https://www.reuters.com/world/europe/russian-forces-advance-toretsk-region-2024-07-10/'}
+    ]
+  },
+  {
+    id:'bucha-massacre',name:'布查事件',type:'event',
+    startDate:'2022-03-01',endDate:'2022-04-01',
+    lat:50.55,lng:30.22,
+    desc:'俄军撤出基辅州后，在布查镇发现了数百具平民遗体，许多双手被绑、有遭受处决的痕迹。国际社会一致谴责为战争罪行。国际刑事法院（ICC）和联合国均派出调查组。这一事件成为俄乌战争中最具冲击力的人道主义悲剧之一。',
+    sources:[
+      {name:'BBC','title':'Bucha: The massacre that shocked the world','url':'https://www.bbc.com/news/world-europe-61014664'},
+      {name:'NYT','title':'Bucha: Evidence of war crimes','url':'https://www.nytimes.com/2022/04/03/world/europe/bucha-ukraine-massacre.html'},
+      {name:'HRW','title':'Ukraine: Apparent War Crimes in Bucha','url':'https://www.hrw.org/news/2022/04/21/ukraine-apparent-war-crimes-russian-controlled-areas'},
+      {name:'Al Jazeera','title':'Bucha killings: What we know','url':'https://www.aljazeera.com/news/2022/4/5/bucha-ukraine-killings-what-we-know-so-far'}
+    ]
+  },
+  {
+    id:'zaporizhzhia-nuclear',name:'扎波罗热核电站危机',type:'event',
+    startDate:'2022-03-04',endDate:'至今',
+    lat:47.51,lng:34.59,
+    desc:'俄军于3月4日炮击并占领了扎波罗热核电站——欧洲最大的核电站。此后核电站多次遭到炮击，引发国际社会对核安全的严重担忧。国际原子能机构（IAEA）多次派遣专家团前往评估，核电站仍在俄军控制之下。',
+    sources:[
+      {name:'IAEA','title':'IAEA on Zaporizhzhia nuclear plant','url':'https://www.iaea.org/newscenter/focus/ukraine'},
+      {name:'BBC','title':'Zaporizhzhia nuclear plant: What happened','url':'https://www.bbc.com/news/world-europe-60638923'},
+      {name:'Reuters','title':'IAEA confirms shelling at Zaporizhzhia plant','url':'https://www.reuters.com/world/europe/iaea-confirms-shelling-zaporizhzhia-nuclear-power-plant-2022-09-05/'},
+      {name:'NYT','title':'Nuclear plant at center of Europe\'s worst crisis','url':'https://www.nytimes.com/2022/09/06/world/europe/zaporizhzhia-nuclear-plant-ukraine.html'}
+    ]
+  },
+  {
+    id:'izium',name:'伊久姆战役与解放',type:'battle',
+    startDate:'2022-03-24',endDate:'2022-09-10',
+    lat:49.19,lng:37.27,
+    desc:'俄军从3月起集中兵力进攻哈尔科夫南部的战略枢纽伊久姆，在巨大伤亡后于4月初占领该市。俄军将伊久姆作为进攻顿巴斯地区的后方基地。2022年9月，乌军在哈尔科夫反攻中闪电收复伊久姆，俄军仓促撤退。此后在伊久姆附近发现大型乱葬岗。',
+    sources:[
+      {name:'BBC','title':'Ukraine retakes Izium','url':'https://www.bbc.com/news/world-europe-62872430'},
+      {name:'ISW','title':'Ukraine recaptures Izium','url':'https://www.understandingwar.org/backgrounder/ukraine-counteroffensive-izium'},
+      {name:'Reuters','title':'Mass grave found in Izium','url':'https://www.reuters.com/world/europe/mass-grave-izium-ukraine-2022-09-16/'}
+    ]
+  }
+];
+
 // ============================================================
 // Configuration
 // ============================================================
@@ -312,18 +551,18 @@ const DATA_BASE_URL = 'https://raw.githubusercontent.com/cyterat/deepstate-map-d
 const DATA_PREFIX = 'deepstatemap_data_';
 const DATA_MIN_DATE = '2024-07-08';
 
-// Color scheme
-const COLOR_RUSSIAN = '#c0392b';
 const COLOR_RUSSIAN_FILL = 'rgba(192, 57, 43, 0.3)';
 const COLOR_RUSSIAN_BORDER = '#c0392b';
 
 // ============================================================
 // State
 // ============================================================
-let map, geoLayer;
+let map, geoLayer, eventMarkers;
 let currentDate = '';
 let isLoading = false;
 let isUpdatingFromUrl = false;
+let currentLayer = 'street';
+let streetLayer, satelliteLayer;
 
 // ============================================================
 // Init Map
@@ -338,39 +577,192 @@ function initMap() {
     zoomAnimation: true,
   });
 
-  // CartoDB light tiles
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>',
-    subdomains: 'abcd',
+  // ESRI World Street Map (clean, Google Maps-like style)
+  streetLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+    attribution: '&copy; <a href="https://www.esri.com/">Esri</a>, &copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>',
     maxZoom: 19,
     minZoom: 3,
-  }).addTo(map);
+  });
+
+  // ESRI World Imagery (satellite)
+  satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: '&copy; <a href="https://www.esri.com/">Esri</a>, &copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>',
+    maxZoom: 19,
+    minZoom: 3,
+  });
+
+  // Default: street
+  streetLayer.addTo(map);
 
   // Fit Ukraine bounds
-  const ukraineBounds = L.latLngBounds(
-    [44.0, 22.0],
-    [52.5, 40.5]
-  );
-  map.fitBounds(ukraineBounds, { padding: [30, 30] });
+  map.fitBounds(L.latLngBounds([44.0, 22.0], [52.5, 40.5]), { padding: [30, 30] });
+}
+
+// ============================================================
+// Layer Toggle
+// ============================================================
+function setupLayerToggle() {
+  const buttons = document.querySelectorAll('#layerToggle button');
+  buttons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      buttons.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const layer = btn.dataset.layer;
+      switchLayer(layer);
+    });
+  });
+
+  // Keyboard shortcut: L to toggle layers
+  document.addEventListener('keydown', (e) => {
+    if ((e.key === 'l' || e.key === 'L') && !e.ctrlKey && !e.metaKey) {
+      const next = currentLayer === 'street' ? 'satellite' : 'street';
+      buttons.forEach(b => {
+        b.classList.toggle('active', b.dataset.layer === next);
+      });
+      switchLayer(next);
+    }
+  });
+}
+
+function switchLayer(layer) {
+  if (layer === currentLayer) return;
+  currentLayer = layer;
+  if (layer === 'street') {
+    map.removeLayer(satelliteLayer);
+    streetLayer.addTo(map);
+  } else {
+    map.removeLayer(streetLayer);
+    satelliteLayer.addTo(map);
+  }
+}
+
+// ============================================================
+// Event Markers
+// ============================================================
+function getEventIcon(type) {
+  const colors = {
+    battle: '#c0392b',
+    offensive: '#d35400',
+    siege: '#8e44ad',
+    event: '#2980b9',
+    massacre: '#2d2d2d'
+  };
+  const color = colors[type] || '#c0392b';
+  return L.divIcon({
+    className: '',
+    html: `<div style="
+      width: 28px; height: 28px;
+      background: ${color};
+      border: 2px solid #fff;
+      border-radius: 50%;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 700; color: #fff;
+      transition: transform .2s;
+    ">⚔</div>`,
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+    popupAnchor: [0, -16],
+  });
+}
+
+function addEventMarkers() {
+  if (eventMarkers) {
+    map.removeLayer(eventMarkers);
+  }
+  eventMarkers = L.layerGroup();
+
+  EVENTS.forEach((evt, idx) => {
+    const icon = getEventIcon(evt.type);
+    const marker = L.marker([evt.lat, evt.lng], { icon });
+
+    marker.on('click', () => {
+      openEventPanel(evt);
+    });
+
+    // Simple hover popup with name and date
+    marker.bindTooltip(`<b>${evt.name}</b><br>${evt.startDate}${evt.endDate !== '至今' ? ' ~ ' + evt.endDate : ' ~ 至今'}`, {
+      direction: 'top',
+      offset: [0, -16],
+      className: 'event-tooltip'
+    });
+
+    eventMarkers.addLayer(marker);
+  });
+
+  map.addLayer(eventMarkers);
+  document.getElementById('eventCount').textContent = EVENTS.length + ' 个';
+}
+
+// ============================================================
+// Event Panel
+// ============================================================
+let currentEventId = null;
+
+function openEventPanel(evt) {
+  currentEventId = evt.id;
+
+  const badgeType = {
+    battle: 'badge-battle', offensive: 'badge-offensive',
+    siege: 'badge-siege', event: 'badge-event', massacre: 'badge-massacre'
+  };
+  const badgeName = {
+    battle: '⚔ 战役', offensive: '⚡ 攻势', siege: '🏰 围城', event: '📌 事件', massacre: '💀 事件'
+  };
+
+  document.getElementById('panelTitle').textContent = evt.name;
+  document.getElementById('panelBadge').innerHTML =
+    `<span class="badge ${badgeType[evt.type] || 'badge-battle'}">${badgeName[evt.type] || '事件'}</span>`;
+  document.getElementById('panelDate').textContent =
+    `📅 ${evt.startDate}${evt.endDate !== '至今' ? ' ~ ' + evt.endDate : ' ~ 至今'}`;
+  document.getElementById('panelLoc').textContent =
+    `📍 ${evt.lat.toFixed(2)}, ${evt.lng.toFixed(2)}`;
+  document.getElementById('panelDesc').textContent = evt.desc;
+
+  // Sources
+  const list = document.getElementById('sourceList');
+  list.innerHTML = '';
+  evt.sources.forEach(s => {
+    const card = document.createElement('div');
+    card.className = 'source-card';
+    card.innerHTML = `
+      <div class="source-name">${s.name}</div>
+      <div class="source-title">${s.title}</div>
+      <a class="source-link" href="${s.url}" target="_blank" rel="noopener">${s.url}</a>
+    `;
+    list.appendChild(card);
+  });
+
+  document.getElementById('panelPlaceholder').style.display = 'none';
+  document.getElementById('panelContent').style.display = 'block';
+  document.getElementById('eventPanel').classList.add('open');
+  document.getElementById('panelBackdrop').classList.add('open');
+}
+
+function closeEventPanel() {
+  document.getElementById('eventPanel').classList.remove('open');
+  document.getElementById('panelBackdrop').classList.remove('open');
+}
+
+function setupEventPanel() {
+  document.getElementById('panelClose').addEventListener('click', closeEventPanel);
+  document.getElementById('panelBackdrop').addEventListener('click', closeEventPanel);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeEventPanel();
+  });
 }
 
 // ============================================================
 // Data Helpers
 // ============================================================
 function dateToPath(dateStr) {
-  // '2024-07-08' → 'deepstatemap_data_20240708.geojson'
-  const ymd = dateStr.replace(/-/g, '');
-  return `${DATA_PREFIX}${ymd}.geojson`;
+  return `${DATA_PREFIX}${dateStr.replace(/-/g, '')}.geojson`;
 }
 
 function formatDateDisplay(dateStr) {
   const d = new Date(dateStr + 'T00:00:00');
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
-  const wd = weekdays[d.getDay()];
-  return `${y} 年 ${m} 月 ${day} 日 周${wd}`;
+  const weekdays = ['日','一','二','三','四','五','六'];
+  return `${d.getFullYear()} 年 ${String(d.getMonth()+1).padStart(2,'0')} 月 ${String(d.getDate()).padStart(2,'0')} 日 周${weekdays[d.getDay()]}`;
 }
 
 function formatNumber(n) {
@@ -378,177 +770,99 @@ function formatNumber(n) {
   return n.toLocaleString('zh-CN', { maximumFractionDigits: 0 });
 }
 
-function formatPercent(n) {
-  if (n == null || isNaN(n)) return '—';
-  return n.toFixed(2) + '%';
-}
-
-// ============================================================
-// Fetch & Render
-// ============================================================
-function showLoading() {
-  isLoading = true;
-  document.getElementById('loadingOverlay').classList.add('active');
-}
-
-function hideLoading() {
-  isLoading = false;
-  document.getElementById('loadingOverlay').classList.remove('active');
-}
-
 function showError(msg) {
   const el = document.getElementById('errorToast');
   el.textContent = msg;
-  el.classList.add('active');
-  setTimeout(() => el.classList.remove('active'), 4000);
+  el.style.display = 'block';
+  setTimeout(() => el.style.display = 'none', 4000);
 }
 
-function formatAreaDisplay(areaKm2) {
-  if (areaKm2 == null || isNaN(areaKm2)) return { area: '—', percent: '—' };
-  const area = formatNumber(areaKm2) + ' km²';
-  const percent = formatPercent((areaKm2 / UKRAINE_TOTAL_KM2) * 100);
-  return { area, percent };
+function showLoading(on) {
+  isLoading = on;
+  document.getElementById('loadingOverlay').style.display = on ? 'flex' : 'none';
 }
 
+// ============================================================
+// Fetch & Render Frontline
+// ============================================================
 async function fetchAndRender(dateStr) {
-  if (isLoading) return;
-  if (!dateStr) return;
-
-  const path = dateToPath(dateStr);
-  const url = `${DATA_BASE_URL}/${path}`;
-
-  showLoading();
+  if (isLoading || !dateStr) return;
+  const url = `${DATA_BASE_URL}/${dateToPath(dateStr)}`;
+  showLoading(true);
   document.getElementById('displayDate').textContent = formatDateDisplay(dateStr);
 
   try {
     const resp = await fetch(url);
-
     if (!resp.ok) {
-      if (resp.status === 404) {
-        showError(`暂无 ${formatDateDisplay(dateStr)} 的战线数据`);
-      } else {
-        showError(`数据加载失败 (${resp.status})`);
-      }
+      if (resp.status === 404) showError(`暂无 ${formatDateDisplay(dateStr)} 的战线数据`);
+      else showError(`数据加载失败 (${resp.status})`);
       clearGeoLayer();
       document.getElementById('russianArea').textContent = '—';
       document.getElementById('occPercent').textContent = '—';
       return;
     }
-
     const data = await resp.json();
-
-    // Validate GeoJSON
-    if (!data || data.type !== 'FeatureCollection' || !data.features || data.features.length === 0) {
+    if (!data || data.type !== 'FeatureCollection' || !data.features?.length) {
       showError('数据格式异常');
-      clearGeoLayer();
       return;
     }
-
-    // Render on map
     renderGeoJSON(data, dateStr);
-
   } catch (err) {
-    console.error('Fetch error:', err);
     showError('网络请求失败，请检查网络后重试');
     clearGeoLayer();
   } finally {
-    hideLoading();
+    showLoading(false);
   }
 }
 
 function renderGeoJSON(geojson, dateStr) {
-  // Clear previous layer
   clearGeoLayer();
-
-  // Process features: merge all into one for rendering
   geoLayer = L.geoJSON(geojson, {
-    style: {
-      color: COLOR_RUSSIAN_BORDER,
-      weight: 1.5,
-      fillColor: COLOR_RUSSIAN_FILL,
-      fillOpacity: 0.5,
-    },
+    style: { color: COLOR_RUSSIAN_BORDER, weight: 1.5, fillColor: COLOR_RUSSIAN_FILL, fillOpacity: 0.5 }
   }).addTo(map);
 
-  // Calculate area using turf
-  let totalAreaKm2 = 0;
-  try {
-    const areaSqM = turf.area(geojson);
-    totalAreaKm2 = areaSqM / 1_000_000;
-  } catch (e) {
-    console.warn('Area calc failed, estimating...', e);
-    // Fallback: rough estimate from polygon bounds
-    totalAreaKm2 = estimateArea(geojson);
-  }
+  let totalAreaKm2 = null;
+  try { totalAreaKm2 = turf.area(geojson) / 1_000_000; } catch(e) {}
 
-  // Update info
-  const { area, percent } = formatAreaDisplay(totalAreaKm2);
-  document.getElementById('russianArea').textContent = area;
-  document.getElementById('occPercent').textContent = percent;
+  if (totalAreaKm2 != null) {
+    document.getElementById('russianArea').textContent = formatNumber(totalAreaKm2) + ' km²';
+    document.getElementById('occPercent').textContent = (totalAreaKm2 / UKRAINE_TOTAL_KM2 * 100).toFixed(2) + '%';
+  }
   document.getElementById('displayDate').textContent = formatDateDisplay(dateStr);
 
-  // Fit map to the data bounds
   try {
     const bounds = geoLayer.getBounds();
-    if (bounds.isValid()) {
-      map.fitBounds(bounds, { padding: [50, 50], maxZoom: 7 });
-    }
-  } catch (e) {
-    // ignore
-  }
+    if (bounds.isValid()) map.fitBounds(bounds, { padding: [50, 50], maxZoom: 7 });
+  } catch(e) {}
 }
 
 function clearGeoLayer() {
-  if (geoLayer) {
-    map.removeLayer(geoLayer);
-    geoLayer = null;
-  }
-}
-
-// Fallback area estimate using shoelace formula on hull
-function estimateArea(geojson) {
-  try {
-    const areaSqM = turf.area(geojson);
-    if (areaSqM && !isNaN(areaSqM)) return areaSqM / 1_000_000;
-  } catch (e) {}
-  return null;
+  if (geoLayer) { map.removeLayer(geoLayer); geoLayer = null; }
 }
 
 // ============================================================
 // Date Logic
 // ============================================================
 function getTodayStr() {
-  const now = new Date();
-  // Use UTC+8
-  const local = new Date(now.getTime() + 8 * 60 * 60 * 1000);
-  const y = local.getUTCFullYear();
-  const m = String(local.getUTCMonth() + 1).padStart(2, '0');
-  const d = String(local.getUTCDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+  const local = new Date(Date.now() + 8 * 3600000);
+  return `${local.getUTCFullYear()}-${String(local.getUTCMonth()+1).padStart(2,'0')}-${String(local.getUTCDate()).padStart(2,'0')}`;
 }
 
 function setupDatePicker() {
   const picker = document.getElementById('datePicker');
   const today = getTodayStr();
-
   picker.min = DATA_MIN_DATE;
   picker.max = today;
-
-  // Try to load today's date first, or latest available
   picker.value = today;
   currentDate = today;
 
   picker.addEventListener('change', () => {
-    const val = picker.value;
-    if (!val) return;
-    currentDate = val;
-    if (!isUpdatingFromUrl) {
-      updateUrl(val);
-    }
-    fetchAndRender(val);
+    if (!picker.value) return;
+    currentDate = picker.value;
+    if (!isUpdatingFromUrl) updateUrl(picker.value);
+    fetchAndRender(picker.value);
   });
 
-  // Today button
   document.getElementById('btnToday').addEventListener('click', () => {
     picker.value = today;
     currentDate = today;
@@ -557,9 +871,6 @@ function setupDatePicker() {
   });
 }
 
-// ============================================================
-// URL Sharing
-// ============================================================
 function updateUrl(dateStr) {
   const url = new URL(window.location);
   url.searchParams.set('date', dateStr);
@@ -567,29 +878,23 @@ function updateUrl(dateStr) {
 }
 
 function loadFromUrl() {
-  const params = new URLSearchParams(window.location.search);
-  const dateParam = params.get('date');
-  if (dateParam) {
-    // Validate date format YYYY-MM-DD
-    if (/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
-      isUpdatingFromUrl = true;
-      document.getElementById('datePicker').value = dateParam;
-      currentDate = dateParam;
-      isUpdatingFromUrl = false;
-      return dateParam;
-    }
+  const p = new URLSearchParams(window.location.search).get('date');
+  if (p && /^\d{4}-\d{2}-\d{2}$/.test(p)) {
+    isUpdatingFromUrl = true;
+    document.getElementById('datePicker').value = p;
+    currentDate = p;
+    isUpdatingFromUrl = false;
+    return p;
   }
   return null;
 }
 
 // ============================================================
-// Keyboard shortcut: R to reset view
+// Keyboard
 // ============================================================
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'r' || e.key === 'R') {
-    if (!e.ctrlKey && !e.metaKey) {
-      map.setView(UKRAINE_CENTER, DEFAULT_ZOOM);
-    }
+  if ((e.key === 'r' || e.key === 'R') && !e.ctrlKey && !e.metaKey) {
+    map.setView(UKRAINE_CENTER, DEFAULT_ZOOM);
   }
 });
 
@@ -599,16 +904,15 @@ document.addEventListener('keydown', (e) => {
 function init() {
   initMap();
   setupDatePicker();
+  setupLayerToggle();
+  setupEventPanel();
 
-  // Load date from URL or use today
+  addEventMarkers();
+
+  // Load date from URL or today
   const urlDate = loadFromUrl();
   const initialDate = urlDate || getTodayStr();
-
-  // Update URL if not from URL
-  if (!urlDate) {
-    updateUrl(initialDate);
-  }
-
+  if (!urlDate) updateUrl(initialDate);
   fetchAndRender(initialDate);
 }
 
